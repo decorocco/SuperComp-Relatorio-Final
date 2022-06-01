@@ -1,6 +1,7 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include <omp.h>
 using namespace std;
 
 
@@ -34,6 +35,8 @@ int main() {
     string bigs;
     string smalls;
 
+    omp_set_num_threads(4);
+
     cin >> n >> m;
     cin >> a >> b;
 
@@ -48,6 +51,8 @@ int main() {
             vsb.push_back(b.substr(i, j));
         }
     }
+
+    #pragma omp parallel for reduction(max:hs)
 
     for(int i = 0; i < int(vsa.size()); i++){
         for(int j = 0; j < int(vsb.size()); j++){
