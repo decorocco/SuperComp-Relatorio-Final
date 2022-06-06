@@ -2,101 +2,117 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
-#include <random>
 #include <bits/stdc++.h>
 #include <vector>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
-#include <thrust/functional.h>
 #include <thrust/transform.h>
 #include <thrust/reduce.h>
+#include <thrust/copy.h>
 #include <thrust/fill.h>
-
+#include <thrust/sequence.h>
+#include <thrust/tuple.h>
 
 using namespace std;
 
-struct subseq{
-    int begin_sa;
-    int len_sa;
-    int begin_sb;
-    int len_sb;
-};
-
-struct score{
-    __host__ __device__ int operator()(const char &a, const char &b) {
-        if (a == b) {
-            return 2;
+struct atrib {
+    __host__ __device__ int operator()(const int &a, const int &b) {
+        if ((a-1) > 0 && (a-1) > b) {
+          return (a-1);
+        }
+        if ((a-1) > 0 && b == (a-1)) {
+          return (a-1);
+        }
+        if (b > 0 && b > (a-1)) {
+            return b;
         }
         else {
-            return -1;
+            return 0;
         }
     }
+};
+
+struct comp {
+  int linha;
+  int coluna;
+  char valor;
+
+  comp(int valor_pos): valor(valor_pos){};
+  __host__ __device__ int operator()(const thrust::tuple<char, int, int>& tupla) {
+    coluna = thrust::get<2>(tupla)-1;
+
+    if (valor == thrust::get<0>(tupla)) {
+      linha = thrust::get<1>(tupla)+2;
+    }
+    else {
+      linha = thrust::get<1>(tupla)-1;
+    }
+
+    if (linha > 0 && linha > coluna) {
+      return linha;
+    }
+    if (coluna > 0 && coluna > linha) {
+      return coluna;
+    }
+    if (linha > 0 && linha==coluna) {
+      return linha;
+    }
+    else {
+      return 0;
+    }
+  }
 };
 
 
 int main(){
-    int n = 0;
-    int m = 0;
-
-    cin >> n >> m;
-
-    int len_maior = n;
-    int len_menor = m;
-
+    int n;
+    int m;
     string a;
     string b;
+    int hs = 0;
 
+    cin >> n >> m;
     cin >> a >> b;
 
-    thrust::host_vector<char> host_a(len_maior);
-    thrust::host_vector<char> host_b(len_menor);
-    
-
-    for (int i = 0; i <= len_maior; i++){
-        host_a[i] = a[i];
+    if (m > n) {
+      swap(a,b);
+      swap(n,m);
     }
 
-    for (int i = 0; i <= len_menor; i++){
-        host_b[i] = b[i];
+    thrust::device_vector<char> device_a(n+1);
+    thrust::device_vector<char> device_b(m+1);
+    thrust::device_vector<int> temp(m+1);
+    thrust::device_vector<int> res(m+1);
+
+    a = '_' + a;
+    b = '_' + b;
+
+    for (int i = 0; i < int(a.size()); i++) {
+      device_a[i] = a[i];
+    }
+    for (int i = 0; i < int(b.size()); i++) {
+      device_b[i] = b[i];
     }
 
-    thrust::device_vector<char> device_a(host_a);
-    thrust::device_vector<char> device_b(host_b);
+    for (int i = 0; i < int(a.size()) - m; i++) {
 
-    vector<subseq> subseqs;
-    subseq sub;
-
-    for (int i = 0; i < len_menor; i++) {
-        for (int j = 0; j < len_maior; j++) {
-            if (j + i <= len_maior) {
-                for (int k = 0; k < len_menor; k++) {
-                    if (k+1 <= len_maior) {
-                        sub.begin_sa = j;
-                        sub.begin_sb = k;
-                        sub.len_sa = i + j;
-                        sub.len_sb = i + k;
-                        subseqs.push_back(sub);
-                    }
-                }
-            }
+      thrust::fill(res.begin(), res.end(), 0);
+      for (int j = 0; j < m+1; j++) {
+        int s = 0;
+        thrust::transform(thrust::make_zip_iterator(thrust::make_tuple(device_b.begin()+1, res.begin(),res.begin()+1)),
+                            thrust::make_zip_iterator(thrust::make_tuple(device_b.begin()+m+1, res.begin()+m, res.begin()+m+1)),
+                            temp.begin()+1, 
+                            comp(device_a[j+i])); 
+        thrust::inclusive_scan(temp.begin(),temp.begin()+m,res.begin(),atrib()); 
+        s = thrust::reduce(res.begin(),res.begin()+m,(int) 0,thrust::maximum<int>());
+        if (s > hs){
+            hs = s;
         }
+      }
     }
 
-    vector<int> scores;
-    //int len_subseqs = subseqs.size();
-    int hs = -1;
-    thrust::device_vector<char> res(len_menor);
-
-    for (int i = 0; i < subseqs.size(); i++) {
-        thrust::transform(device_a.begin() + subseqs[i].begin_sa, device_a.end() + subseqs[i].len_sa,
-                          device_b.begin() + subseqs[i].begin_sb, res.begin(), score());
-    
-
-        int reduce_score = thrust::reduce(res.begin(), res.end(), (int)0, thrust::plus<int>());
-
-        if (reduce_score > hs) {
-            hs = reduce_score;
-        }
+    if ((2 * m) == (hs + 2)) {
+      hs += 2;
     }
 
     cout << hs << endl;
